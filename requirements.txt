@@ -1,0 +1,11 @@
+openpyxl
+numpy
+pandas
+tensorflow
+scikit-learn
+tqdm
+differint
+joblib
+prettytable
+matplotlib
+seaborn
