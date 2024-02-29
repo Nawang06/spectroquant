@@ -5,9 +5,7 @@ tensorflow
 scikit-learn
 tqdm
 differint
-joblib
 prettytable
 matplotlib
 seaborn
 pydot
-pyarrow

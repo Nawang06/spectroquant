@@ -69,10 +69,11 @@ def input_files(data_folder, save_folder="Input"):
                 else:
                     v.append(list(df[140:][k].values))
             for j in range(len(v)):
-                record = {'id': id,
-                        'wavelengths':w,
-                        'values':v[j]}
-                photometrydf = photometrydf.append(record, ignore_index=True)
+                if len(v[j])==771:
+                    record = {'id': id,
+                            'wavelengths':w,
+                            'values':v[j]}
+                    photometrydf = photometrydf.append(record, ignore_index=True)
 
     finaldf = pd.merge(winedf, photometrydf, on='id', how='inner', suffixes=('_wine', '_photometry'))
     if not os.path.exists(save_folder):
