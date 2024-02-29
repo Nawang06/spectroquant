@@ -60,8 +60,11 @@ def input_files(data_folder, save_folder="Input"):
                 except Exception as e:
                     print(e)
             df.dropna(axis=1, inplace=True)
-            df = df.replace('****', np.nan).fillna(method='ffill')
-            df = df.astype(float)
+            df = df.replace('****', np.nan).replace(';', np.nan).fillna(method='ffill')
+            try:
+                df = df.astype(float)
+            except:
+                print(i)
             id = i.split('\\')[-1].split('.')[0].split('-')[0]
             w = df[140:][0].values
             v = []
