@@ -10,3 +10,4 @@ prettytable
 matplotlib
 seaborn
 pydot
+pyarrow

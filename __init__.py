@@ -15,6 +15,8 @@ from prettytable import PrettyTable
 from IPython.display import clear_output, Image, display
 from sklearn.model_selection import train_test_split
 
+from .wines import *
+
 # Helper code to make graphs look better
 from cycler import cycler
 import matplotlib.pyplot as plt
@@ -48,23 +50,16 @@ def process_record(record, order):
 
 def calculate_derivatives(dataframe, derivative_orders):
     records = dataframe.reset_index().to_dict(orient='records')
-    tasks = list(product(records, derivative_orders))  # This creates an iterable of tuples
-
-    # # Optional: Print a few tasks to verify their structure
-    # print("Sample tasks:", tasks[:5])
+    tasks = list(product(records, derivative_orders)) 
 
     with multiprocessing.Pool() as pool:
-        # Map tasks to the process_record function
         results = pool.starmap(process_record, tasks)
 
-    # Convert list of dictionaries to DataFrame
     df_results = pd.DataFrame(results)
 
-    # Group by the index column
-    index_col = 'index'  # This is the name of the column that holds the original index
+    index_col = 'index'  
     grouped = df_results.groupby(index_col)
 
-    # Combine derivatives of the same record into one row
     reshaped_df = grouped.apply(lambda x: x.iloc[0]).reset_index(drop=True)
 
     for order in derivative_orders:
@@ -180,28 +175,23 @@ class autoencoder():
             encoded1 = tf.keras.layers.Dense(256, activation='relu')(encoded1)
             encoded1 = tf.keras.layers.Dense(256, activation='relu')(encoded1)
 
-            # Input 2
             input2 = tf.keras.Input(shape=(input_size2,))
             encoded2 = tf.keras.layers.Dense(512, activation='relu')(input2)
             encoded2 = tf.keras.layers.Dense(512, activation='relu')(encoded2)
             encoded2 = tf.keras.layers.Dense(256, activation='relu')(encoded2)
             encoded2 = tf.keras.layers.Dense(256, activation='relu')(encoded2)
 
-            # Merging branches
             merged = tf.keras.layers.concatenate([encoded1, encoded2])
             merged = tf.keras.layers.Dense(512, activation='relu')(merged)
             merged = tf.keras.layers.Dense(256, activation='relu')(merged)
             merged = tf.keras.layers.Dense(128, activation='relu')(merged)
 
-            # Latent space
-            latent_space = tf.keras.layers.Dense(latent_size, activation='relu')(merged)  # Adjust the size of the latent space as needed
+            latent_space = tf.keras.layers.Dense(latent_size, activation='relu')(merged)  
 
-            # Decoder
             decoded = tf.keras.layers.Dense(128, activation='relu')(latent_space)
             decoded = tf.keras.layers.Dense(256, activation='relu')(decoded)
             decoded = tf.keras.layers.Dense(512, activation='relu')(decoded)
 
-            # Splitting branches
             decoded1 = tf.keras.layers.Dense(256, activation='relu')(decoded)
             decoded1 = tf.keras.layers.Dense(256, activation='relu')(decoded1)
             decoded1 = tf.keras.layers.Dense(512, activation='relu')(decoded1)
@@ -214,14 +204,11 @@ class autoencoder():
             decoded2 = tf.keras.layers.Dense(512, activation='relu')(decoded2)
             decoded2 = tf.keras.layers.Dense(input_size2, activation='linear')(decoded2)
 
-            # Autoencoder model
             self.autoencoder = tf.keras.Model(inputs=[input1, input2], outputs=[decoded1, decoded2])
 
-            # Compile the model
             self.autoencoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate = 1e-3, clipnorm = 1e-4)
                                      , loss='mse')
 
-            # Model summary
             if show_models:
                 display(tf.keras.utils.plot_model(self.autoencoder, show_shapes=True))
         else:
@@ -288,10 +275,13 @@ class autoencoder():
                 plt.savefig('autoencoder_prediction.png', transparent=True)
             plt.show()
 
-    def save_model(weights_directory = "\\Autoencoder Weights\\", file_name = 'xyz.h5'):
+    def save_model(self, weights_directory = "Autoencoder Weights", file_name = 'xyz.h5'):
 
-        print('Under Construction')
+        if not os.path.exists(weights_directory):
+            os.makedirs(weights_directory)
+        file=os.path.join(weights_directory, file_name)
+        self.autoencoder.save(file)
     
-    def load_model(weights_directory = "\\Autoencoder Weights\\", file_name = 'xyz.h5'):
-
-        print('Under Construction')
+    def load_model(self, model_weights):
+        
+        self.autoencoder=tf.keras.models.load_model(model_weights)
