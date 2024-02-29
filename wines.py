@@ -61,6 +61,7 @@ def input_files(data_folder, save_folder="Input"):
                     print(e)
             df.dropna(axis=1, inplace=True)
             df = df.replace('****', np.nan).fillna(method='ffill')
+            df = df.astype(float)
             id = i.split('\\')[-1].split('.')[0].split('-')[0]
             w = df[140:][0].values
             v = []
