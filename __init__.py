@@ -35,7 +35,6 @@ params = {'axes.titlesize': small,
           'figure.titlesize': medium,
           'axes.prop_cycle': cycler(color = colors),}
 plt.rcParams.update(params)
-get_ipython().run_line_magic('matplotlib', 'inline')
 
 __version__= "1.0"
 
@@ -48,12 +47,16 @@ def process_record(record, order):
     derivative = get_derivatives(order, wavelengths, values)
     return {**record, f'derivative_{order}': derivative}
 
-def calculate_derivatives(dataframe, derivative_orders):
+def calculate_derivatives(dataframe, derivative_orders, debug=False):
     records = dataframe.reset_index().to_dict(orient='records')
     tasks = list(product(records, derivative_orders)) 
-
+    if debug:
+        print('Starting multiprocessing')
     with multiprocessing.Pool() as pool:
         results = pool.starmap(process_record, tasks)
+
+    if debug:
+        print('Multiprocessing complete')
 
     df_results = pd.DataFrame(results)
 
@@ -62,9 +65,14 @@ def calculate_derivatives(dataframe, derivative_orders):
 
     reshaped_df = grouped.apply(lambda x: x.iloc[0]).reset_index(drop=True)
 
+    if debug:
+        print('Groupby complete')
+
     for order in derivative_orders:
         reshaped_df[f'derivative_{order}'] = grouped.apply(lambda x: x[f'derivative_{order}'].iloc[0]).values
 
+    if debug:
+        return results, reshaped_df.drop(['index'], axis=1)
     return reshaped_df.drop(['index'], axis=1)
 
 def plot_spectra(wavelengths, values, title=None, xlabel=None, ylabel=None, grid=True, save=False):

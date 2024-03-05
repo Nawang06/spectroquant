@@ -128,6 +128,16 @@ def read_input_files(folder="Input", verbose=0):
                 pdfs[i] = pd.read_pickle(photometry_files[i])
 
             photometrydata = pd.concat(list(pdfs.values()))
+
+        for i in data.columns:
+            if i!='id':
+                data[i]=data[i].apply(lambda x: [float(j) for j in x])
+        for i in winedata.columns:
+            if i!='id':
+                winedata[i]=winedata[i].apply(lambda x: [float(j) for j in x])
+        for i in photometrydata.columns:
+            if i!='id':
+                photometrydata[i]=photometrydata[i].apply(lambda x: [float(j) for j in x])
         return data, winedata, photometrydata
     else:
         data_files = glob(folder + "\*.pickle")
@@ -139,4 +149,8 @@ def read_input_files(folder="Input", verbose=0):
                 dfs[i] = pd.read_pickle(data_files[i])
 
             data = pd.concat(list(dfs.values()))
+
+        for i in data.columns:
+            if i!='id':
+                data[i]=data[i].apply(lambda x: [float(j) for j in x])
         return data
