@@ -130,6 +130,12 @@ class autoencoder():
         self.project=project
         self.data=dfs
         
+        samples_count = [len(df) for df in self.data]
+        if len(set(samples_count)) == 1:
+            print("All DataFrames have the same number of rows.")
+        else:
+            raise ValueError("DataFrames do not have the same number of samples.")
+        
         if not dfs:
             print('Data not found')
         
@@ -167,53 +173,55 @@ class autoencoder():
 
         elif self.project=='wine':
             
-            input_size1 = len(self.data[0].iloc[0])
-            input_size2 = len(self.data[1].iloc[0])
-            input1 = tf.keras.Input(shape=(input_size1,))
-            encoded1 = tf.keras.layers.Dense(512, activation='relu')(input1)
-            encoded1 = tf.keras.layers.Dense(512, activation='relu')(encoded1)
-            encoded1 = tf.keras.layers.Dense(256, activation='relu')(encoded1)
-            encoded1 = tf.keras.layers.Dense(256, activation='relu')(encoded1)
-
-            input2 = tf.keras.Input(shape=(input_size2,))
-            encoded2 = tf.keras.layers.Dense(512, activation='relu')(input2)
-            encoded2 = tf.keras.layers.Dense(512, activation='relu')(encoded2)
-            encoded2 = tf.keras.layers.Dense(256, activation='relu')(encoded2)
-            encoded2 = tf.keras.layers.Dense(256, activation='relu')(encoded2)
-
-            merged = tf.keras.layers.concatenate([encoded1, encoded2])
+            input_layers = []
+            input_sizes = []
+            encoded_layers = []
+            decoded_outputs = []
+            
+            for df in self.data:
+                for col in df.columns:
+                    input_size = len(df[col].iloc[0])
+                    input_sizes.append(input_size)
+                    input_layer = tf.keras.Input(shape=(input_size,))
+                    input_layers.append(input_layer)
+                    
+                    encoded = tf.keras.layers.Dense(512, activation='relu')(input_layer)
+                    encoded = tf.keras.layers.Dense(512, activation='relu')(encoded)
+                    encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
+                    encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
+                    encoded_layers.append(encoded)
+            
+            merged = tf.keras.layers.concatenate(encoded_layers)
             merged = tf.keras.layers.Dense(512, activation='relu')(merged)
             merged = tf.keras.layers.Dense(256, activation='relu')(merged)
             merged = tf.keras.layers.Dense(128, activation='relu')(merged)
-
-            latent_space = tf.keras.layers.Dense(latent_size, activation='relu')(merged)  
-
+            
+            latent_space = tf.keras.layers.Dense(latent_size, activation='relu')(merged)
+            
             decoded = tf.keras.layers.Dense(128, activation='relu')(latent_space)
             decoded = tf.keras.layers.Dense(256, activation='relu')(decoded)
             decoded = tf.keras.layers.Dense(512, activation='relu')(decoded)
-
-            decoded1 = tf.keras.layers.Dense(256, activation='relu')(decoded)
-            decoded1 = tf.keras.layers.Dense(256, activation='relu')(decoded1)
-            decoded1 = tf.keras.layers.Dense(512, activation='relu')(decoded1)
-            decoded1 = tf.keras.layers.Dense(512, activation='relu')(decoded1)
-            decoded1 = tf.keras.layers.Dense(input_size1, activation='linear')(decoded1)
-
-            decoded2 = tf.keras.layers.Dense(256, activation='relu')(decoded)
-            decoded2 = tf.keras.layers.Dense(256, activation='relu')(decoded2)
-            decoded2 = tf.keras.layers.Dense(512, activation='relu')(decoded2)
-            decoded2 = tf.keras.layers.Dense(512, activation='relu')(decoded2)
-            decoded2 = tf.keras.layers.Dense(input_size2, activation='linear')(decoded2)
-
-            self.autoencoder = tf.keras.Model(inputs=[input1, input2], outputs=[decoded1, decoded2])
+            
+            for input_size in input_sizes:
+                
+                decoded_ = tf.keras.layers.Dense(256, activation='relu')(decoded)
+                decoded_ = tf.keras.layers.Dense(256, activation='relu')(decoded_)
+                decoded_ = tf.keras.layers.Dense(512, activation='relu')(decoded_)
+                decoded_ = tf.keras.layers.Dense(512, activation='relu')(decoded_)
+                decoded_ = tf.keras.layers.Dense(input_size, activation='linear')(decoded_)
+                decoded_outputs.append(decoded_)
+                
+            self.autoencoder = tf.keras.Model(inputs=input_layers, outputs=decoded_outputs)
 
             self.autoencoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate = 1e-3, clipnorm = 1e-4)
                                      , loss='mse')
+            
 
             if show_models:
                 display(tf.keras.utils.plot_model(self.autoencoder, show_shapes=True))
         else:
             print('Project not supported!!')
-
+                
     def train(self, batch_size=128, n_epochs=500, patience=50, verbose=1):
         
         early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
@@ -226,17 +234,28 @@ class autoencoder():
                                                             batch_size = batch_size, epochs = n_epochs, 
                                                             callbacks = [early_stopping], verbose = verbose).history
         else:
-            self.data1_train, self.data1_test, self.data2_train, self.data2_test = train_test_split(self.data[0], self.data[1], test_size=0.2, random_state=44)
+            self.X_train_list = []
+            self.X_val_list = []
 
-            self.data1_train = np.array(list(self.data1_train))
-            self.data2_train = np.array(list(self.data2_train))
-            self.data1_test = np.array(list(self.data1_test))
-            self.data2_test = np.array(list(self.data2_test))
+            for df in self.data:
 
-            self.autoencoder.history = self.autoencoder.fit([self.data1_train, self.data2_train],  [self.data1_train, self.data2_train],  
-                                                            epochs=n_epochs, batch_size=batch_size,
-                                                            callbacks = [early_stopping], verbose = verbose,
-                                                            validation_data=([self.data1_test, self.data2_test], [self.data1_test, self.data2_test])).history
+                for col in df.columns:
+                    X = np.array(list(df[col]))
+                    
+                    X_train, X_val = train_test_split(X, test_size=0.2, random_state=44)
+                    
+                    self.X_train_list.append(X_train)
+                    self.X_val_list.append(X_val)
+                    
+            self.autoencoder.history = self.autoencoder.fit(
+                                                            x=self.X_train_list,
+                                                            y=self.X_train_list,
+                                                            epochs=n_epochs,
+                                                            batch_size=batch_size,
+                                                            callbacks=[early_stopping],
+                                                            verbose=verbose,
+                                                            validation_data=(self.X_val_list, self.X_val_list)
+                                                        ).history
             
     def plot_loss(self, grid=True, save=False):
 
@@ -256,24 +275,55 @@ class autoencoder():
         
         if self.project=='optilab':
             print('Not yet available')
+            
         else:
-            sample_index = np.random.randint(1, len(self.data2_test)+1)
-            sample = [self.data1_test[sample_index].reshape(1,-1), self.data2_test[sample_index].reshape(1,-1)]
-            p1, p2 = self.autoencoder(sample)
-            fig, ax = plt.subplots(2, 1, figsize=(15,8), dpi=500)
-            ax[0].plot(sample[0].reshape(-1), label='Original')
-            ax[0].plot(p1.numpy().reshape(-1), label='Predicted')
-            ax[0].grid(grid)
-            ax[0].legend()
-            ax[1].plot(sample[1].reshape(-1), label='Original')
-            ax[1].plot(p2.numpy().reshape(-1), label='Predicted')
-            ax[1].grid(grid)
-            ax[1].legend()
-            plt.suptitle('Sample Prediction')
+            num_inputs = len(self.X_val_list)
+            sample_indices = np.random.randint(0, len(self.X_val_list[0]), 1)
+            
+            samples = [self.X_val_list[i][sample_indices].reshape(1, -1) for i in range(num_inputs)]
+            predictions = self.autoencoder.predict(samples)
+            
+            fig, axs = plt.subplots(num_inputs, 1, figsize=(15, 8 * num_inputs), dpi=100)
+            for i in range(num_inputs):
+                original = samples[i].flatten()
+                predicted = predictions[i].flatten()
+                
+                if num_inputs > 1:
+                    ax = axs[i]
+                else:
+                    ax = axs
+                    
+                ax.plot(original, label='Original')
+                ax.plot(predicted, label='Predicted')
+                ax.grid(grid)
+                ax.legend()
+                ax.set_title(f'Sample Prediction for Input {i+1}')
+            
+            plt.suptitle('Autoencoder Sample Predictions')
             plt.tight_layout()
+            
             if save:
                 plt.savefig('autoencoder_prediction.png', transparent=True)
+            
             plt.show()
+            
+            # sample_index = np.random.randint(1, len(self.data2_test)+1)
+            # sample = [self.data1_test[sample_index].reshape(1,-1), self.data2_test[sample_index].reshape(1,-1)]
+            # p1, p2 = self.autoencoder(sample)
+            # fig, ax = plt.subplots(2, 1, figsize=(15,8), dpi=500)
+            # ax[0].plot(sample[0].reshape(-1), label='Original')
+            # ax[0].plot(p1.numpy().reshape(-1), label='Predicted')
+            # ax[0].grid(grid)
+            # ax[0].legend()
+            # ax[1].plot(sample[1].reshape(-1), label='Original')
+            # ax[1].plot(p2.numpy().reshape(-1), label='Predicted')
+            # ax[1].grid(grid)
+            # ax[1].legend()
+            # plt.suptitle('Sample Prediction')
+            # plt.tight_layout()
+            # if save:
+            #     plt.savefig('autoencoder_prediction.png', transparent=True)
+            # plt.show()
 
     def save_model(self, weights_directory = "Autoencoder Weights", file_name = 'xyz.h5'):
 
