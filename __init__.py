@@ -60,20 +60,14 @@ def calculate_derivatives(dataframe, derivative_orders, debug=False):
 
     df_results = pd.DataFrame(results)
 
-    index_col = 'index'  
-    grouped = df_results.groupby(index_col)
-
-    reshaped_df = grouped.apply(lambda x: x.iloc[0]).reset_index(drop=True)
+    df_results = df_results.groupby('id', as_index=False).first()
 
     if debug:
         print('Groupby complete')
 
-    for order in derivative_orders:
-        reshaped_df[f'derivative_{order}'] = grouped.apply(lambda x: x[f'derivative_{order}'].iloc[0]).values
-
     if debug:
-        return results, reshaped_df.drop(['index'], axis=1)
-    return reshaped_df.drop(['index'], axis=1)
+        return results, df_results.drop(['index'], axis=1)
+    return df_results.drop(['index'], axis=1)
 
 def plot_spectra(wavelengths, values, title=None, xlabel=None, ylabel=None, grid=True, save=False):
     
