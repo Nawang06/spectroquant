@@ -102,6 +102,9 @@ def input_files(data_folder, save_folder="Input"):
 
     return finaldf, winedf, photometrydf
 
+def input_2020_files(data_folder, save_folder="Input"):
+    pass
+
 def read_input_files(folder="Input", verbose=0):
     
     if verbose==1:
