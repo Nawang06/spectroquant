@@ -134,6 +134,7 @@ class autoencoder():
     
         self.project=project
         self.data=dfs
+        self.trained=0
         
         samples_count = [len(df) for df in self.data]
         if len(set(samples_count)) == 1:
@@ -166,7 +167,6 @@ class autoencoder():
             latent_vector = Encoder(input_layer)
 
             output_layer = Decoder(latent_vector)
-
 
             self.autoencoder = tf.keras.models.Model(inputs = input_layer, outputs = output_layer)
 
@@ -201,7 +201,7 @@ class autoencoder():
             merged = tf.keras.layers.Dense(256, activation='relu')(merged)
             merged = tf.keras.layers.Dense(128, activation='relu')(merged)
             
-            latent_space = tf.keras.layers.Dense(latent_size, activation='relu')(merged)
+            latent_space = tf.keras.layers.Dense(latent_size, activation='relu', name="Latent_Space")(merged)
             
             decoded = tf.keras.layers.Dense(128, activation='relu')(latent_space)
             decoded = tf.keras.layers.Dense(256, activation='relu')(decoded)
@@ -221,14 +221,25 @@ class autoencoder():
             self.autoencoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate = 1e-3, clipnorm = 1e-4)
                                      , loss='mse')
             
-
+            self.encoder = tf.keras.Model(inputs=input_layers, outputs=latent_space)
+            
             if show_models:
                 display(tf.keras.utils.plot_model(self.autoencoder, show_shapes=True))
         else:
             print('Project not supported!!')
+            
+    def get_encoder(self):
+        if self.encoder is not None:
+            if self.trained:
+                return self.encoder
+            else:
+                self.train()
+                return self.encoder
+        else:
+            print("Encoder Model is not defined.")
+            return None
                 
     def train(self, batch_size=128, n_epochs=500, patience=50, verbose=1):
-        
         early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
         if self.project=='optilab':
             self.x_train, self.x_val, self.y_train, self.y_val = train_test_split(self.autoencoder_df, self.file_ids, 
@@ -263,7 +274,6 @@ class autoencoder():
                                                         ).history
             
     def plot_loss(self, grid=True, save=False):
-
         plt.plot(self.autoencoder.history['loss'], label='Train Loss')
         plt.plot(self.autoencoder.history['val_loss'], label='Validation Loss')
         plt.xlabel('Epochs')
@@ -338,5 +348,5 @@ class autoencoder():
         self.autoencoder.save(file)
     
     def load_model(self, model_weights):
-        
+        self.trained=1
         self.autoencoder=tf.keras.models.load_model(model_weights)
