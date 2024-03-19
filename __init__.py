@@ -134,14 +134,12 @@ class autoencoder():
     
         self.project=project
         self.data=dfs
-        self.trained=0
+        self.loaded=0
         
         samples_count = [len(df) for df in self.data]
-        if len(set(samples_count)) == 1:
-            print("All DataFrames have the same number of rows.")
-        else:
+        if len(set(samples_count)) != 1:
             raise ValueError("DataFrames do not have the same number of samples.")
-        
+            
         if not dfs:
             print('Data not found')
         
@@ -228,16 +226,15 @@ class autoencoder():
         else:
             print('Project not supported!!')
             
-    def get_encoder(self):
-        if self.encoder is not None:
-            if self.trained:
+    def get_encoder(self, trained=False):
+        if trained:
+            if self.loaded:
                 return self.encoder
             else:
                 self.train()
                 return self.encoder
         else:
-            print("Encoder Model is not defined.")
-            return None
+            return self.encoder
                 
     def train(self, batch_size=128, n_epochs=500, patience=50, verbose=1):
         early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
@@ -348,5 +345,5 @@ class autoencoder():
         self.autoencoder.save(file)
     
     def load_model(self, model_weights):
-        self.trained=1
+        self.loaded=1
         self.autoencoder=tf.keras.models.load_model(model_weights)
