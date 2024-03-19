@@ -59,8 +59,11 @@ def calculate_derivatives(dataframe, derivative_orders, debug=False):
         print('Multiprocessing complete')
 
     df_results = pd.DataFrame(results)
-
-    df_results = df_results.groupby('id', as_index=False).first()
+    
+    # Changing 'values' column from list to tuple for grouping
+    df_results["values"] = df_results["values"].apply(tuple)
+    
+    df_results = df_results.groupby(['id', 'values'], as_index=False).first()
 
     if debug:
         print('Groupby complete')
