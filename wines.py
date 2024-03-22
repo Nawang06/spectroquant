@@ -14,6 +14,8 @@ import differint.differint as dif
 from prettytable import PrettyTable
 from IPython.display import clear_output
 from pandas.errors import ParserError
+from . import Autoencoder, ClassificationModel
+
 
 def input_files(data_folder, save_folder="Input"):
     
@@ -106,6 +108,7 @@ def input_2020_files(data_folder, save_folder="Input"):
     pass
 
 def read_input_files(folder="Input", verbose=0):
+
     
     if verbose==1:
         data_files = glob(folder + "\*.pickle")
@@ -157,3 +160,30 @@ def read_input_files(folder="Input", verbose=0):
             if i!='id':
                 data[i]=data[i].apply(lambda x: [float(j) for j in x])
         return data
+    
+def train_models(data_folder):
+    # Step 1: Load data
+    data = read_input_files(data_folder)
+    
+    autoencoder = Autoencoder(latent_size=32, show_models=True) 
+    autoencoder.train(data) 
+
+    encoder = autoencoder.get_encoder(trained=True)
+    X_encoded = encoder.predict(data)  
+    
+
+    classification_model = ClassificationModel(encoder, latent_size=32, num_classes=4)
+    classification_model.train(X_encoded, y)
+
+    autoencoder.save_model('autoencoder_model.h5')
+    classification_model.save_weights('classification_model_weights.h5')
+
+def infer(input_data):
+    autoencoder = Autoencoder.load_model('autoencoder_model.h5')
+    classification_model = ClassificationModel.load_weights('classification_model_weights.h5', encoder=autoencoder.get_encoder())
+    
+    encoded_input = autoencoder.get_encoder().predict(input_data)
+    
+    prediction = classification_model.predict(encoded_input)
+
+    return prediction

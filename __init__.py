@@ -14,6 +14,10 @@ import differint.differint as dif
 from prettytable import PrettyTable
 from IPython.display import clear_output, Image, display
 from sklearn.model_selection import train_test_split
+from tensorflow.keras.layers import Input, Dense, Conv1D, GlobalAveragePooling1D, Dropout
+from tensorflow.keras.models import Model
+from tensorflow.keras.callbacks import EarlyStopping
+from sklearn.model_selection import train_test_split
 
 from .wines import *
 
@@ -347,3 +351,42 @@ class autoencoder():
     def load_model(self, model_weights):
         self.loaded=1
         self.autoencoder=tf.keras.models.load_model(model_weights)
+
+class ClassificationModel:
+    def __init__(self, encoder, latent_size=32, num_classes=4):
+        self.encoder = encoder
+        self.latent_size = latent_size
+        self.num_classes = num_classes
+        self.model = self._build_model()
+    
+    def _build_model(self):
+        self.encoder.trainable = False
+        
+        encoded_input = Input(shape=(self.latent_size,))
+
+        x = Conv1D(64, 3, activation='relu', padding='same')(encoded_input)
+        x = Conv1D(64, 3, activation='relu', padding='same')(x)
+        x = GlobalAveragePooling1D()(x)
+        x = Dropout(0.5)(x)
+
+        output = Dense(self.num_classes, activation='softmax')(x)
+
+        model = Model(inputs=encoded_input, outputs=output)
+        
+        return model
+
+    def train(self, x_train, y_train, x_val, y_val, batch_size=128, epochs=100, patience=10):
+        self.model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+        
+        early_stopping = EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
+
+        history = self.model.fit(x_train, y_train, validation_data=(x_val, y_val), 
+                                 epochs=epochs, batch_size=batch_size, callbacks=[early_stopping])
+        
+        return history
+
+    def save_weights(self, filepath):
+        self.model.save_weights(filepath)
+        
+    def load_weights(self, filepath):
+        self.model.load_weights(filepath)
