@@ -8,6 +8,25 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.model_selection import train_test_split
 
+# Helper code to make graphs look better
+from cycler import cycler
+import matplotlib.pyplot as plt
+large = 24; medium = 20; small = 16
+colors = ['#66bb6a', '#558ed5', '#dd6a63', '#dcd0ff', '#ffa726', '#8c5eff', '#f44336', '#00bcd4', '#ffc107', '#9c27b0']
+params = {'axes.titlesize': small,
+          'legend.fontsize': small,
+          'figure.figsize': (6, 6),
+          'axes.labelsize': small,
+          'axes.linewidth': 2,
+          'xtick.labelsize': small,
+          'xtick.color' : '#1D1717',
+          'ytick.color' : '#1D1717',
+          'ytick.labelsize': small,
+          'axes.edgecolor':'#1D1717',
+          'figure.titlesize': medium,
+          'axes.prop_cycle': cycler(color = colors),}
+plt.rcParams.update(params)
+
 
 class Autoencoder():
 
