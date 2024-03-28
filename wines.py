@@ -14,7 +14,7 @@ import differint.differint as dif
 from prettytable import PrettyTable
 from IPython.display import clear_output
 from pandas.errors import ParserError
-from . import Autoencoder, ClassificationModel
+from .models import Autoencoder, ClassificationModel
 
 
 def input_files(data_folder, save_folder="Input"):
