@@ -37,11 +37,11 @@ plt.rcParams.update(params)
 __version__= "1.0"
 
 def get_derivatives(order, wavelengths, values):
-    return dif.GLI(order, values, domain_start=min(wavelengths), domain_end=max(wavelengths), num_points=len(wavelengths))
+    return dif.GL(order, values, domain_start=min(wavelengths), domain_end=max(wavelengths), num_points=len(wavelengths))
 
 def process_record(record, order):
-    wavelengths = record['wavelengths']
-    values = record['values']
+    wavelengths = list(map(float, record['wavelengths']))
+    values = list(map(float, record['values']))
     derivative = get_derivatives(order, wavelengths, values)
     return {**record, f'derivative_{order}': derivative}
 
