@@ -60,9 +60,9 @@ def input_files(data_folder, save_folder="Input"):
                 winedf = winedf.append(record, ignore_index=True)
                 
         for i in photometrytemp:
-            if y=='2021':
+            if y=='2021' or y=='2020':
                 try: 
-                    df = pd.read_csv(i, skiprows=8, encoding='latin-1', header=None)
+                    df = pd.read_csv(i, skiprows=7, encoding='latin-1', header=None)
                 except ParserError as e:
                     print(i)
                 except Exception as e:
@@ -75,7 +75,12 @@ def input_files(data_folder, save_folder="Input"):
                 except Exception as e:
                     print(e)
             df.dropna(axis=1, inplace=True)
-            df = df.replace('****', np.nan).replace(';', np.nan).fillna(method='ffill')
+            try:
+                df = df.replace('****', np.nan).replace(';', np.nan).interpolate(method='linear')
+            except Exception as e:
+                df = pd.read_csv(i, delimiter=';', decimal=',',skiprows=6, encoding='latin-1', header=None)
+                df = df.replace('****', np.nan).replace(';', np.nan).interpolate(method='linear')
+                
             try:
                 df = df.astype(float)
             except:
@@ -150,7 +155,7 @@ def read_input_files(folder="Input", verbose=0):
         data_files = glob(folder + "\*.pickle")
         wine_files = glob(os.path.join(folder, 'Wines') + "\*.pickle")
         photometry_files = glob(os.path.join(folder, 'Photometry') + "\*.pickle")
-        if len==1:
+        if len(data_files)==1:
             data=pd.read_pickle(data_files[0])
             winedata=pd.read_pickle(wine_files[0])
             photometrydata=pd.read_pickle(photometry_files[0])
