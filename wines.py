@@ -92,7 +92,7 @@ def input_files(data_folder, save_folder="Input"):
     if not os.path.exists(photometrydata):
         os.makedirs(photometrydata)
 
-    n = len(glob(save_folder + "\*.parquet")) + 1
+    n = len(glob(save_folder + "\*.pickle")) + 1
 
     filename = os.path.join(save_folder, f'data_{n}.pickle')
     winename =  os.path.join(winedata, f'data_{n}.pickle')
