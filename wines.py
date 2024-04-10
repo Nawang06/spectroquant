@@ -16,6 +16,8 @@ from IPython.display import clear_output
 from pandas.errors import ParserError
 from .models import Autoencoder, ClassificationModel
 
+def convert_to_float(value):
+    return float(value.replace(';', '.'))
 
 def input_files(data_folder, save_folder="Input"):
     
@@ -32,14 +34,25 @@ def input_files(data_folder, save_folder="Input"):
             df = pd.read_csv(i, delimiter=';', decimal=',', skiprows=6, encoding='latin-1', header=None)
             id = i.split('\\')[-1].split('.')[0]
             
-            w = df[:1060][0].values
+            try:
+                w = list(map(float, df[:1060][0].values))
+            except Exception as e:
+                print(f'Id: {id}')
+                print(e)
+                continue
             v = []
             for k in df.columns:
                 if k==0:
                     pass
                 else:
-                    v.append(list(df[:1060][k].values))
-                    v.append(list(df[1074:][k].values))
+                    try:
+                        v.append(list(map(float, df[:1060][k].values)))
+                        v.append(list(map(float, df[1074:][k].values)))
+                    except Exception as e:
+                        print(f'Id: {id}')
+                        print(e)
+                        continue           
+
             for j in range(len(v)):
                 record = {'id': id,
                         'wavelengths':w,
@@ -68,13 +81,26 @@ def input_files(data_folder, save_folder="Input"):
             except:
                 print(i)
             id = i.split('\\')[-1].split('.')[0].split('-')[0]
-            w = df[140:][0].values
+            try:
+                w = list(map(float, df[140:][0].values))
+            except: 
+                try:
+                    w = list(map(convert_to_float, df[140:][0].values))
+                except Exception as e:
+                    print(f'Id: {id}')
+                    print(e)
+                    continue
             v = []
             for k in df.columns:
                 if k==0:
                     pass
                 else:
-                    v.append(list(df[140:][k].values))
+                    try:
+                        v.append(list(map(float, df[140:][k].values)))
+                    except Exception as e:
+                        print(f'Id: {id}')
+                        print(e)
+                        continue
             for j in range(len(v)):
                 if len(v[j])==771:
                     record = {'id': id,
@@ -107,6 +133,16 @@ def input_files(data_folder, save_folder="Input"):
 def input_2020_files(data_folder, save_folder="Input"):
     pass
 
+def read_input_file(folder="input", file='', verbose=0):
+    if verbose==1:
+        data=pd.read_pickle(os.path.join(folder,file))
+        winedata=pd.read_pickle(os.path.join(folder, "Wines", file))
+        photometrydata=pd.read_pickle(os.path.join(folder, "Photometry", file))
+        return data, winedata, photometrydata
+    else: 
+        data=pd.read_pickle(os.path.join(folder,file))
+        return data
+
 def read_input_files(folder="Input", verbose=0):
 
     
@@ -134,16 +170,6 @@ def read_input_files(folder="Input", verbose=0):
                 pdfs[i] = pd.read_pickle(photometry_files[i])
 
             photometrydata = pd.concat(list(pdfs.values()))
-
-        for i in data.columns:
-            if i!='id':
-                data[i]=data[i].apply(lambda x: [float(j) for j in x])
-        for i in winedata.columns:
-            if i!='id':
-                winedata[i]=winedata[i].apply(lambda x: [float(j) for j in x])
-        for i in photometrydata.columns:
-            if i!='id':
-                photometrydata[i]=photometrydata[i].apply(lambda x: [float(j) for j in x])
         return data, winedata, photometrydata
     else:
         data_files = glob(folder + "\*.pickle")
@@ -155,10 +181,6 @@ def read_input_files(folder="Input", verbose=0):
                 dfs[i] = pd.read_pickle(data_files[i])
 
             data = pd.concat(list(dfs.values()))
-
-        for i in data.columns:
-            if i!='id':
-                data[i]=data[i].apply(lambda x: [float(j) for j in x])
         return data
     
 def train_models(data_folder):
