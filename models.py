@@ -78,57 +78,67 @@ class Autoencoder():
                 display(tf.keras.utils.plot_model(self.autoencoder, show_shapes=True))
 
         elif self.project=='wine':
-            
-            input_layers = []
-            input_sizes = []
-            encoded_layers = []
             decoded_outputs = []
             
+            photometry_inputs = []
+            photometry_encoded = []
+            winescan_inputs = []
+            winescan_encoded = []
+            
             for df in self.data:
-                self.file_ids = df["id"].to_list()
-                for col in df.columns:
-                    if "wavelength" in col.lower() or "id" in col.lower():
-                        continue
-                    else:
-                        self.column_names.append(col)
-                        input_size = len(df[col].iloc[0])
-                        input_sizes.append(input_size)
-                        input_layer = tf.keras.Input(shape=(input_size,))
-                        input_layers.append(input_layer)
-                        
-                        encoded = tf.keras.layers.Dense(512, activation='relu')(input_layer)
-                        encoded = tf.keras.layers.Dense(512, activation='relu')(encoded)
-                        encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
-                        encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
-                        encoded_layers.append(encoded)
+                self.file_ids = df["id"].to_list()  # Assuming each df has an 'id' column
+            for col in df.columns:
+                if "wavelength" in col.lower() or "id" in col.lower():
+                    continue
+                input_size = len(df[col].iloc[0])
+                self.column_names.append(col)
+                input_layer = tf.keras.Input(shape=(input_size,), name=col)
+                
+                # Create encoded representation
+                encoded = tf.keras.layers.Dense(512, activation='relu')(input_layer)
+                encoded = tf.keras.layers.Dense(512, activation='relu')(encoded)
+                encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
+                encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
+                
+                # Append to respective list based on column name
+                if "photometry" in col.lower():
+                    photometry_inputs.append(input_layer)
+                    photometry_encoded.append(encoded)
+                elif "winescan" in col.lower():
+                    winescan_inputs.append(input_layer)
+                    winescan_encoded.append(encoded)
                     
-            merged = tf.keras.layers.concatenate(encoded_layers)
+                # Concatenate and add category-specific dense layers
+                photometry_merged = tf.keras.layers.concatenate(photometry_encoded)
+                # Additional dense layers for Photometry branch
+                photometry_merged = tf.keras.layers.Dense(256, activation='relu')(photometry_merged)
+                photometry_merged = tf.keras.layers.Dense(128, activation='relu')(photometry_merged)
+                winescan_merged = tf.keras.layers.concatenate(winescan_encoded)
+                # Additional dense layers for Winescan branch
+                winescan_merged = tf.keras.layers.Dense(256, activation='relu')(winescan_merged)
+                winescan_merged = tf.keras.layers.Dense(128, activation='relu')(winescan_merged)
+
+            merged = tf.keras.layers.concatenate([photometry_merged, winescan_merged])
+            
+            # Continue with shared layers
             merged = tf.keras.layers.Dense(512, activation='relu')(merged)
             merged = tf.keras.layers.Dense(256, activation='relu')(merged)
             merged = tf.keras.layers.Dense(128, activation='relu')(merged)
             
-            latent_space = tf.keras.layers.Dense(latent_size, activation='relu', name="Latent_Space")(merged)
+            latent_space = tf.keras.layers.Dense(self.latent_size, activation='relu', name="Latent_Space")(merged)
             
-            decoded = tf.keras.layers.Dense(128, activation='relu')(latent_space)
-            decoded = tf.keras.layers.Dense(256, activation='relu')(decoded)
-            decoded = tf.keras.layers.Dense(512, activation='relu')(decoded)
+            # Decoder
+            decoded_outputs = []
+            for input_layer in photometry_inputs + winescan_inputs:
+                decoded = tf.keras.layers.Dense(128, activation='relu')(latent_space)
+                decoded = tf.keras.layers.Dense(256, activation='relu')(decoded)
+                decoded = tf.keras.layers.Dense(512, activation='relu')(decoded)
+                decoded = tf.keras.layers.Dense(input_layer.shape[-1], activation='linear')(decoded)
+                decoded_outputs.append(decoded)
             
-            for input_size in input_sizes:
-                
-                decoded_ = tf.keras.layers.Dense(256, activation='relu')(decoded)
-                decoded_ = tf.keras.layers.Dense(256, activation='relu')(decoded_)
-                decoded_ = tf.keras.layers.Dense(512, activation='relu')(decoded_)
-                decoded_ = tf.keras.layers.Dense(512, activation='relu')(decoded_)
-                decoded_ = tf.keras.layers.Dense(input_size, activation='linear')(decoded_)
-                decoded_outputs.append(decoded_)
-                
-            self.autoencoder = tf.keras.Model(inputs=input_layers, outputs=decoded_outputs)
-
-            self.autoencoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate = 1e-3, clipnorm = 1e-4)
-                                     , loss='mse')
-            
-            self.encoder = tf.keras.Model(inputs=input_layers, outputs=latent_space)
-            
+            self.autoencoder = tf.keras.Model(inputs=photometry_inputs + winescan_inputs, outputs=decoded_outputs)
+            self.autoencoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3, clipnorm=1e-4), loss='mse')
+            self.encoder = tf.keras.Model(inputs=photometry_inputs + winescan_inputs, outputs=latent_space)            
             if show_models:
                 display(tf.keras.utils.plot_model(self.autoencoder, show_shapes=True))
         else:
