@@ -34,7 +34,10 @@ class Autoencoder():
     
         self.project=project
         self.data=dfs
-        self.loaded=0
+        self.loaded=False
+        self.trained=False
+        self.column_names = []
+        self.file_ids = []
         
         samples_count = [len(df) for df in self.data]
         if len(set(samples_count)) != 1:
@@ -75,52 +78,67 @@ class Autoencoder():
                 display(tf.keras.utils.plot_model(self.autoencoder, show_shapes=True))
 
         elif self.project=='wine':
-            
-            input_layers = []
-            input_sizes = []
-            encoded_layers = []
             decoded_outputs = []
             
-            for df in self.data:
-                for col in df.columns:
-                    input_size = len(df[col].iloc[0])
-                    input_sizes.append(input_size)
-                    input_layer = tf.keras.Input(shape=(input_size,))
-                    input_layers.append(input_layer)
-                    
-                    encoded = tf.keras.layers.Dense(512, activation='relu')(input_layer)
-                    encoded = tf.keras.layers.Dense(512, activation='relu')(encoded)
-                    encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
-                    encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
-                    encoded_layers.append(encoded)
+            photometry_inputs = []
+            photometry_encoded = []
+            winescan_inputs = []
+            winescan_encoded = []
             
-            merged = tf.keras.layers.concatenate(encoded_layers)
+            for df in self.data:
+                self.file_ids = df["id"].to_list()  # Assuming each df has an 'id' column
+            for col in df.columns:
+                if "wavelength" in col.lower() or "id" in col.lower():
+                    continue
+                input_size = len(df[col].iloc[0])
+                self.column_names.append(col)
+                input_layer = tf.keras.Input(shape=(input_size,), name=col)
+                
+                # Create encoded representation
+                encoded = tf.keras.layers.Dense(512, activation='relu')(input_layer)
+                encoded = tf.keras.layers.Dense(512, activation='relu')(encoded)
+                encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
+                encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
+                
+                # Append to respective list based on column name
+                if "photometry" in col.lower():
+                    photometry_inputs.append(input_layer)
+                    photometry_encoded.append(encoded)
+                elif "winescan" in col.lower():
+                    winescan_inputs.append(input_layer)
+                    winescan_encoded.append(encoded)
+                    
+                # Concatenate and add category-specific dense layers
+                photometry_merged = tf.keras.layers.concatenate(photometry_encoded)
+                # Additional dense layers for Photometry branch
+                photometry_merged = tf.keras.layers.Dense(256, activation='relu')(photometry_merged)
+                photometry_merged = tf.keras.layers.Dense(128, activation='relu')(photometry_merged)
+                winescan_merged = tf.keras.layers.concatenate(winescan_encoded)
+                # Additional dense layers for Winescan branch
+                winescan_merged = tf.keras.layers.Dense(256, activation='relu')(winescan_merged)
+                winescan_merged = tf.keras.layers.Dense(128, activation='relu')(winescan_merged)
+
+            merged = tf.keras.layers.concatenate([photometry_merged, winescan_merged])
+            
+            # Continue with shared layers
             merged = tf.keras.layers.Dense(512, activation='relu')(merged)
             merged = tf.keras.layers.Dense(256, activation='relu')(merged)
             merged = tf.keras.layers.Dense(128, activation='relu')(merged)
             
-            latent_space = tf.keras.layers.Dense(latent_size, activation='relu', name="Latent_Space")(merged)
+            latent_space = tf.keras.layers.Dense(self.latent_size, activation='relu', name="Latent_Space")(merged)
             
-            decoded = tf.keras.layers.Dense(128, activation='relu')(latent_space)
-            decoded = tf.keras.layers.Dense(256, activation='relu')(decoded)
-            decoded = tf.keras.layers.Dense(512, activation='relu')(decoded)
+            # Decoder
+            decoded_outputs = []
+            for input_layer in photometry_inputs + winescan_inputs:
+                decoded = tf.keras.layers.Dense(128, activation='relu')(latent_space)
+                decoded = tf.keras.layers.Dense(256, activation='relu')(decoded)
+                decoded = tf.keras.layers.Dense(512, activation='relu')(decoded)
+                decoded = tf.keras.layers.Dense(input_layer.shape[-1], activation='linear')(decoded)
+                decoded_outputs.append(decoded)
             
-            for input_size in input_sizes:
-                
-                decoded_ = tf.keras.layers.Dense(256, activation='relu')(decoded)
-                decoded_ = tf.keras.layers.Dense(256, activation='relu')(decoded_)
-                decoded_ = tf.keras.layers.Dense(512, activation='relu')(decoded_)
-                decoded_ = tf.keras.layers.Dense(512, activation='relu')(decoded_)
-                decoded_ = tf.keras.layers.Dense(input_size, activation='linear')(decoded_)
-                decoded_outputs.append(decoded_)
-                
-            self.autoencoder = tf.keras.Model(inputs=input_layers, outputs=decoded_outputs)
-
-            self.autoencoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate = 1e-3, clipnorm = 1e-4)
-                                     , loss='mse')
-            
-            self.encoder = tf.keras.Model(inputs=input_layers, outputs=latent_space)
-            
+            self.autoencoder = tf.keras.Model(inputs=photometry_inputs + winescan_inputs, outputs=decoded_outputs)
+            self.autoencoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3, clipnorm=1e-4), loss='mse')
+            self.encoder = tf.keras.Model(inputs=photometry_inputs + winescan_inputs, outputs=latent_space)            
             if show_models:
                 display(tf.keras.utils.plot_model(self.autoencoder, show_shapes=True))
         else:
@@ -128,7 +146,7 @@ class Autoencoder():
             
     def get_encoder(self, trained=False):
         if trained:
-            if self.loaded:
+            if self.loaded or self.trained:
                 return self.encoder
             else:
                 self.train()
@@ -153,12 +171,17 @@ class Autoencoder():
             for df in self.data:
 
                 for col in df.columns:
-                    X = np.array(list(df[col]))
+                    if "wavelength" in col.lower() or "id" in col.lower():
+                        continue
+                    else:
+                        X = np.array(list(df[col]))
+                        
+                        X_train, X_val = train_test_split(X, test_size=0.2, random_state=44)
+                        
+                        self.X_train_list.append(X_train)
+                        self.X_val_list.append(X_val)
                     
-                    X_train, X_val = train_test_split(X, test_size=0.2, random_state=44)
-                    
-                    self.X_train_list.append(X_train)
-                    self.X_val_list.append(X_val)
+            self.id_trains, self.id_vals = train_test_split(self.file_ids, test_size=0.2,random_state=44)
                     
             self.autoencoder.history = self.autoencoder.fit(
                                                             x=self.X_train_list,
@@ -169,6 +192,7 @@ class Autoencoder():
                                                             verbose=verbose,
                                                             validation_data=(self.X_val_list, self.X_val_list)
                                                         ).history
+        self.trained=True
             
     def plot_loss(self, grid=True, save=False):
         plt.plot(self.autoencoder.history['loss'], label='Train Loss')
@@ -190,10 +214,12 @@ class Autoencoder():
             
         else:
             num_inputs = len(self.X_val_list)
-            sample_indices = np.random.randint(0, len(self.X_val_list[0]), 1)
+            sample_index = np.random.randint(0, len(self.X_val_list[0]), 1)[0]
             
-            samples = [self.X_val_list[i][sample_indices].reshape(1, -1) for i in range(num_inputs)]
+            samples = [self.X_val_list[i][sample_index].reshape(1, -1) for i in range(num_inputs)]
             predictions = self.autoencoder.predict(samples)
+            
+            column_names = self.column_names 
             
             fig, axs = plt.subplots(num_inputs, 1, figsize=(15, 8 * num_inputs), dpi=100)
             for i in range(num_inputs):
@@ -209,43 +235,24 @@ class Autoencoder():
                 ax.plot(predicted, label='Predicted')
                 ax.grid(grid)
                 ax.legend()
-                ax.set_title(f'Sample Prediction for Input {i+1}')
+                ax.set_title(f'Sample Prediction for Input {column_names[i]}')
             
-            plt.suptitle('Autoencoder Sample Predictions')
-            plt.tight_layout()
+            plt.suptitle(f'Autoencoder Sample Predictions for id: {self.id_vals[sample_index]}')
+            plt.tight_layout(pad=3.0)
             
             if save:
                 plt.savefig('autoencoder_prediction.png', transparent=True)
             
             plt.show()
-            
-            # sample_index = np.random.randint(1, len(self.data2_test)+1)
-            # sample = [self.data1_test[sample_index].reshape(1,-1), self.data2_test[sample_index].reshape(1,-1)]
-            # p1, p2 = self.autoencoder(sample)
-            # fig, ax = plt.subplots(2, 1, figsize=(15,8), dpi=500)
-            # ax[0].plot(sample[0].reshape(-1), label='Original')
-            # ax[0].plot(p1.numpy().reshape(-1), label='Predicted')
-            # ax[0].grid(grid)
-            # ax[0].legend()
-            # ax[1].plot(sample[1].reshape(-1), label='Original')
-            # ax[1].plot(p2.numpy().reshape(-1), label='Predicted')
-            # ax[1].grid(grid)
-            # ax[1].legend()
-            # plt.suptitle('Sample Prediction')
-            # plt.tight_layout()
-            # if save:
-            #     plt.savefig('autoencoder_prediction.png', transparent=True)
-            # plt.show()
 
     def save_model(self, weights_directory = "Autoencoder Weights", file_name = 'xyz.h5'):
-
         if not os.path.exists(weights_directory):
             os.makedirs(weights_directory)
         file=os.path.join(weights_directory, file_name)
         self.autoencoder.save(file)
     
     def load_model(self, model_weights):
-        self.loaded=1
+        self.loaded=True
         self.autoencoder=tf.keras.models.load_model(model_weights)
 
 class ClassificationModel:
@@ -258,7 +265,7 @@ class ClassificationModel:
     def _build_model(self):
         self.encoder.trainable = False
         
-        encoded_input = Input(shape=(self.latent_size,))
+        encoded_input = Input(shape=(self.latent_size,1))
 
         x = Conv1D(64, 3, activation='relu', padding='same')(encoded_input)
         x = Conv1D(64, 3, activation='relu', padding='same')(x)
@@ -271,12 +278,46 @@ class ClassificationModel:
         
         return model
 
-    def train(self, x_train, y_train, x_val, y_val, batch_size=128, epochs=100, patience=10):
+class ClassificationModel:
+    def __init__(self, encoder, latent_size=32, num_classes=4):
+        self.encoder = encoder
+        self.latent_size = latent_size
+        self.num_classes = num_classes
+        self.model = self._build_model()
+    
+    def _build_model(self):
+        self.encoder.trainable = False
+        
+        encoded_input = Input(shape=(self.latent_size,1))
+
+        x = Conv1D(64, 3, activation='relu', padding='same')(encoded_input)
+        x = Conv1D(64, 3, activation='relu', padding='same')(x)
+        x = GlobalAveragePooling1D()(x)
+        # x = Dropout(0.5)(x)
+
+        output = Dense(self.num_classes, activation='softmax')(x)
+
+        model = Model(inputs=encoded_input, outputs=output)
+        
+        return model
+
+    def train(self, data, labels, batch_size=64, epochs=100, patience=10):
+        
+        processed_data = []
+        for column in data.columns:
+            # Convert tuples to numpy array and store in the list
+            column_data = np.array(data[column].tolist())
+            processed_data.append(column_data)
+            
+        encoded_input = self.encoder.predict(processed_data)
+        
+        X_train, X_val, y_train, y_val = train_test_split(encoded_input, labels, test_size=0.2, random_state=42)
+        
         self.model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
         
         early_stopping = EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
 
-        history = self.model.fit(x_train, y_train, validation_data=(x_val, y_val), 
+        history = self.model.fit(X_train, y_train, validation_data=(X_val, y_val), 
                                  epochs=epochs, batch_size=batch_size, callbacks=[early_stopping])
         
         return history
