@@ -188,11 +188,15 @@ def read_input_files(folder="Input", verbose=0):
             data = pd.concat(list(dfs.values()))
         return data
     
+#TODO: train_models and infer function needs to be fixed according to the input that we are taking.
 def train_models(data_folder):
-    # Step 1: Load data
+
     data = read_input_files(data_folder)
     
-    autoencoder = Autoencoder(latent_size=32, show_models=True) 
+    try:
+        autoencoder = Autoencoder(latent_size=32, show_models=True) 
+    except:
+        autoencoder = Autoencoder(latent_size=32, show_models=False) 
     autoencoder.train(data) 
 
     encoder = autoencoder.get_encoder(trained=True)
