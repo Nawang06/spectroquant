@@ -87,10 +87,10 @@ def input_files(data_folder, save_folder="Input"):
                 print(i)
             id = i.split('\\')[-1].split('.')[0].split('-')[0]
             try:
-                w = list(map(float, df[140:][0].values))
+                w = list(map(float, df[141:][0].values))
             except: 
                 try:
-                    w = list(map(convert_to_float, df[140:][0].values))
+                    w = list(map(convert_to_float, df[141:][0].values))
                 except Exception as e:
                     print(f'Id: {id}')
                     print(e)
@@ -101,13 +101,13 @@ def input_files(data_folder, save_folder="Input"):
                     pass
                 else:
                     try:
-                        v.append(list(map(float, df[140:][k].values)))
+                        v.append(list(map(float, df[141:][k].values)))
                     except Exception as e:
                         print(f'Id: {id}')
                         print(e)
                         continue
             for j in range(len(v)):
-                if len(v[j])==771:
+                if len(v[j])==770:
                     record = {'id': id,
                             'wavelengths':w,
                             'values':v[j]}
