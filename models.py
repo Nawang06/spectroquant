@@ -1,12 +1,15 @@
 import os
 import numpy as np
 import tensorflow as tf
-from IPython.display import display
-from sklearn.model_selection import train_test_split
+
 from tensorflow.keras.layers import Input, Dense, Conv1D, GlobalAveragePooling1D, Dropout
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import EarlyStopping
+
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelBinarizer
+
+from IPython.display import display
 
 # Helper code to make graphs look better
 from cycler import cycler
@@ -27,7 +30,6 @@ params = {'axes.titlesize': small,
           'axes.prop_cycle': cycler(color = colors),}
 plt.rcParams.update(params)
 
-
 class Autoencoder():
 
     def __init__(self, project='wine', dfs=None, latent_size=32, show_models=False):
@@ -46,10 +48,15 @@ class Autoencoder():
         if not dfs:
             print('Data not found')
         
+        self._build_model(latent_size, show_models)
+        
+                    
+    def _build_model(self, latent_size, show_models):
+        
         if self.project=='optilab':
             Encoder = tf.keras.models.Sequential(name='Encoder')
 
-            Encoder.add(tf.keras.layers.Dense(512,  input_shape = (dfs.shape[1],), activation='relu'))
+            Encoder.add(tf.keras.layers.Dense(512,  input_shape = (self.data.shape[1],), activation='relu'))
             Encoder.add(tf.keras.layers.Dense(256,  activation='relu'))
             Encoder.add(tf.keras.layers.Dense(128,  activation='relu'))
             Encoder.add(tf.keras.layers.Dense(64,  activation='relu'))
@@ -61,9 +68,9 @@ class Autoencoder():
             Decoder.add(tf.keras.layers.Dense(128,  activation='relu'))
             Decoder.add(tf.keras.layers.Dense(256,  activation='relu'))
             Decoder.add(tf.keras.layers.Dense(512,  activation='relu'))
-            Decoder.add(tf.keras.layers.Dense(dfs.shape[1],  activation='linear'))
+            Decoder.add(tf.keras.layers.Dense(self.data.shape[1],  activation='linear'))
             
-            input_layer = tf.keras.layers.Input(shape = (dfs.shape[1]))
+            input_layer = tf.keras.layers.Input(shape = (self.data.shape[1]))
 
             latent_vector = Encoder(input_layer)
 
@@ -88,10 +95,10 @@ class Autoencoder():
             for df in self.data:
                 self.file_ids = df["id"].to_list()  # Assuming each df has an 'id' column
             for col in df.columns:
-                if "wavelength" in col.lower() or "id" in col.lower():
+                if "id" in col.lower() or "wavelength" in col.lower():
                     continue
-                input_size = len(df[col].iloc[0])
                 self.column_names.append(col)
+                input_size = len(df[col].iloc[0])
                 input_layer = tf.keras.Input(shape=(input_size,), name=col)
                 
                 # Create encoded representation
@@ -107,17 +114,25 @@ class Autoencoder():
                 elif "winescan" in col.lower():
                     winescan_inputs.append(input_layer)
                     winescan_encoded.append(encoded)
-                    
+            
                 # Concatenate and add category-specific dense layers
-                photometry_merged = tf.keras.layers.concatenate(photometry_encoded)
-                # Additional dense layers for Photometry branch
-                photometry_merged = tf.keras.layers.Dense(256, activation='relu')(photometry_merged)
-                photometry_merged = tf.keras.layers.Dense(128, activation='relu')(photometry_merged)
-                winescan_merged = tf.keras.layers.concatenate(winescan_encoded)
-                # Additional dense layers for Winescan branch
-                winescan_merged = tf.keras.layers.Dense(256, activation='relu')(winescan_merged)
-                winescan_merged = tf.keras.layers.Dense(128, activation='relu')(winescan_merged)
+                if photometry_encoded:
+                    photometry_merged = tf.keras.layers.concatenate(photometry_encoded)
+                    # Additional dense layers for Photometry branch
+                    photometry_merged = tf.keras.layers.Dense(256, activation='relu')(photometry_merged)
+                    photometry_merged = tf.keras.layers.Dense(128, activation='relu')(photometry_merged)
+                else:
+                    photometry_merged = None
 
+                if winescan_encoded:
+                    winescan_merged = tf.keras.layers.concatenate(winescan_encoded)
+                    # Additional dense layers for Winescan branch
+                    winescan_merged = tf.keras.layers.Dense(256, activation='relu')(winescan_merged)
+                    winescan_merged = tf.keras.layers.Dense(128, activation='relu')(winescan_merged)
+                else:
+                    winescan_merged = None
+
+            
             merged = tf.keras.layers.concatenate([photometry_merged, winescan_merged])
             
             # Continue with shared layers
@@ -125,7 +140,7 @@ class Autoencoder():
             merged = tf.keras.layers.Dense(256, activation='relu')(merged)
             merged = tf.keras.layers.Dense(128, activation='relu')(merged)
             
-            latent_space = tf.keras.layers.Dense(self.latent_size, activation='relu', name="Latent_Space")(merged)
+            latent_space = tf.keras.layers.Dense(latent_size, activation='relu', name="Latent_Space")(merged)
             
             # Decoder
             decoded_outputs = []
@@ -143,6 +158,8 @@ class Autoencoder():
                 display(tf.keras.utils.plot_model(self.autoencoder, show_shapes=True))
         else:
             print('Project not supported!!')
+
+        
             
     def get_encoder(self, trained=False):
         if trained:
@@ -153,7 +170,7 @@ class Autoencoder():
                 return self.encoder
         else:
             return self.encoder
-                
+        
     def train(self, batch_size=128, n_epochs=500, patience=50, verbose=1):
         early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
         if self.project=='optilab':
@@ -254,6 +271,7 @@ class Autoencoder():
     def load_model(self, model_weights):
         self.loaded=True
         self.autoencoder=tf.keras.models.load_model(model_weights)
+        
 
 class ClassificationModel:
     def __init__(self, encoder, latent_size=32, num_classes=4):
@@ -279,51 +297,97 @@ class ClassificationModel:
         return model
 
 class ClassificationModel:
+    
     def __init__(self, encoder, latent_size=32, num_classes=4):
         self.encoder = encoder
         self.latent_size = latent_size
         self.num_classes = num_classes
-        self.model = self._build_model()
+        self._build_model()
     
     def _build_model(self):
-        self.encoder.trainable = False
         
-        encoded_input = Input(shape=(self.latent_size,1))
-
-        x = Conv1D(64, 3, activation='relu', padding='same')(encoded_input)
-        x = Conv1D(64, 3, activation='relu', padding='same')(x)
-        x = GlobalAveragePooling1D()(x)
-        # x = Dropout(0.5)(x)
-
-        output = Dense(self.num_classes, activation='softmax')(x)
-
-        model = Model(inputs=encoded_input, outputs=output)
+        encoded_input = Input(shape=(self.latent_size, 1))
         
-        return model
+        x = tf.keras.layers.Conv1D(32, 5, activation='relu',padding="same")(encoded_input)
+        x = tf.keras.layers.Conv1D(32, 5, activation='relu',padding="same")(x)
+        x = tf.keras.layers.Conv1D(32, 5, activation='relu',padding="same")(x)
+        x = tf.keras.layers.MaxPool1D(pool_size=2)(x)
 
-    def train(self, data, labels, batch_size=64, epochs=100, patience=10):
-        
+        x = tf.keras.layers.Conv1D(64, 5, activation='relu',padding="same")(x)
+        x = tf.keras.layers.Conv1D(64, 5, activation='relu',padding="same")(x)
+        x = tf.keras.layers.Conv1D(64, 5, activation='relu',padding="same")(x)
+        x = tf.keras.layers.MaxPool1D(pool_size=2)(x)
+
+        x = tf.keras.layers.Conv1D(128, 3, activation='relu',padding="same")(x)
+        x = tf.keras.layers.Conv1D(128, 3, activation='relu',padding="same")(x)
+        x = tf.keras.layers.Conv1D(128, 3, activation='relu',padding="same")(x)
+        x = tf.keras.layers.MaxPool1D(pool_size=2)(x)
+
+        x = tf.keras.layers.Conv1D(128, 3, activation='relu',padding="same")(x)
+        x = tf.keras.layers.MaxPool1D(pool_size=2)(x)
+
+        x = tf.keras.layers.Flatten()(x)
+        xx = tf.keras.layers.Dense(128, activation='relu')(x)
+        xx = tf.keras.layers.Dense(128, activation='relu')(xx)
+        output = tf.keras.layers.Dense(self.num_classes, activation='softmax')(xx)
+
+        self.classifier = Model(inputs=encoded_input, outputs=output)
+
+    
+    def _preprocess_data(self, df):
         processed_data = []
+        labels = df["class"]
+        data = df.drop("class", axis=1)
+        
+        # Create a label binarizer
+        lb = LabelBinarizer()
+        
+        labels = lb.fit_transform(labels) 
+                
         for column in data.columns:
+            if "wavelength" in column.lower() or "id" in column.lower():
+                continue
             # Convert tuples to numpy array and store in the list
             column_data = np.array(data[column].tolist())
             processed_data.append(column_data)
             
         encoded_input = self.encoder.predict(processed_data)
         
-        X_train, X_val, y_train, y_val = train_test_split(encoded_input, labels, test_size=0.2, random_state=42)
+        return train_test_split(encoded_input, labels, test_size=0.2, random_state=42)    
         
-        self.model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+    def train(self, df, batch_size=64, epochs=100, patience=10):
+        
+        X_train, X_val, y_train, y_val = self._preprocess_data(df)
+        
+        optim = tf.keras.optimizers.Adam(learning_rate=1e-4)
+        self.classifier.compile(optimizer=optim, loss='categorical_crossentropy',metrics=["accuracy"])
         
         early_stopping = EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
 
-        history = self.model.fit(X_train, y_train, validation_data=(X_val, y_val), 
-                                 epochs=epochs, batch_size=batch_size, callbacks=[early_stopping])
+        self.classifier.history = self.classifier.fit(X_train, y_train, validation_data=(X_val, y_val), 
+                                 epochs=epochs, batch_size=batch_size, callbacks=[early_stopping]).history
         
-        return history
+    
+    def plot_loss(self, grid=True, save=False):
+        plt.plot(self.classifier.history['loss'], label='Train Loss')
+        plt.plot(self.classifier.history['val_loss'], label='Validation Loss')
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.title('Classifier Training History')
+        plt.grid(grid)
+        plt.legend()
+        plt.tight_layout()
+        if save:
+            plt.savefig('classifier.png', transparent=True)
+        plt.show()
 
-    def save_weights(self, filepath):
-        self.model.save_weights(filepath)
-        
-    def load_weights(self, filepath):
-        self.model.load_weights(filepath)
+    def save_model(self, weights_directory = "Classifier Weights", file_name = 'classifier.h5'):
+        if not os.path.exists(weights_directory):
+            os.makedirs(weights_directory)
+        file=os.path.join(weights_directory, file_name)
+        self.autoencoder.save(file)
+    
+    def load_model(self, model_weights):
+        self.loaded=True
+        self.autoencoder=tf.keras.models.load_model(model_weights)
