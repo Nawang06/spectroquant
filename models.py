@@ -349,15 +349,15 @@ class ClassificationModel:
         self.classifier = Model(inputs=encoded_input, outputs=output)
 
     
-    def _preprocess_data(self, df):
+    def _preprocess_data(self, df, trainset=False):
+        
         processed_data = []
         labels = df["class"]
         data = df.drop("class", axis=1)
-        
-        # Create a label binarizer
-        lb = LabelBinarizer()
-        
-        labels = lb.fit_transform(labels) 
+        if trainset:
+            labels = self.lb.fit_transform(labels) 
+        else:
+            labels = self.lb.transform(labels) 
                 
         for column in data.columns:
             if "wavelength" in column.lower() or "id" in column.lower():
@@ -368,19 +368,38 @@ class ClassificationModel:
             
         encoded_input = self.encoder.predict(processed_data)
         
-        return train_test_split(encoded_input, labels, test_size=0.2, random_state=42)    
+        return encoded_input, labels
         
 
-    def train(self, df, batch_size=64, epochs=500, patience=20):
+    def train(self, df,test_df=None, batch_size=64, epochs=500, patience=20,test_ratio=0.2, valid_ratio=0.2):
         
-        X_train, X_val, y_train, y_val = self._preprocess_data(df)
+        self.lb = LabelBinarizer()
+        if test_df is not None:
+            ids_train, ids_valid = train_test_split(df['id'].unique(), test_size = valid_ratio)
+            self.df_train = df[df['id'].isin(ids_train)]
+            self.df_valid = df[df['id'].isin(ids_valid)]            
+            self.train_input, self.train_labels = self._preprocess_data(self.df_train, trainset=True)
+            self.test_input, self.test_labels = self._preprocess_data(test_df)
+            self.val_input, self.val_labels = self._preprocess_data(self.df_valid)
+        else:
+            ids_train, ids_test = train_test_split(df['id'].unique(), test_size = test_ratio)
+            ids_train, ids_valid = train_test_split(ids_train, test_size = valid_ratio)
+            
+            self.df_train = df[df['id'].isin(ids_train)]
+            self.df_valid = df[df['id'].isin(ids_valid)]
+            self.df_test = df[df['id'].isin(ids_test)]
+            
+            self.train_input, self.train_labels = self._preprocess_data(self.df_train, trainset=True)
+            self.test_input, self.test_labels = self._preprocess_data(self.df_test)
+            self.val_input, self.val_labels = self._preprocess_data(self.df_valid)
+            
         
         optim = tf.keras.optimizers.Adam(learning_rate=1e-4)
         self.classifier.compile(optimizer=optim, loss='categorical_crossentropy',metrics=["accuracy"])
         
         early_stopping = EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
 
-        self.classifier.history = self.classifier.fit(X_train, y_train, validation_data=(X_val, y_val), 
+        self.classifier.history = self.classifier.fit(self.train_input, self.train_labels, validation_data=(self.val_input, self.val_labels), 
                                  epochs=epochs, batch_size=batch_size, callbacks=[early_stopping]).history
         
     
@@ -397,8 +416,6 @@ class ClassificationModel:
             plt.savefig('classifier.png', transparent=True)
         plt.show()
         
-        
-
 
     def save_model(self, weights_directory = "Classifier Weights", file_name = 'classifier.h5'):
         if not os.path.exists(weights_directory):
