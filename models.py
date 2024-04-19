@@ -1,13 +1,16 @@
 import os
 import numpy as np
 import tensorflow as tf
+import keras.backend as K
 
-from tensorflow.keras.layers import Input, Dense, Conv1D, GlobalAveragePooling1D, Dropout
+from tensorflow.keras.layers import Input, Dense, Conv1D, Flatten, Dropout, LeakyReLU,MaxPool1D,UpSampling1D, Lambda, GlobalMaxPool1D,Concatenate, concatenate, ZeroPadding1D, Cropping1D
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import EarlyStopping
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelBinarizer
+from sklearn.metrics import classification_report, confusion_matrix
+
 
 from IPython.display import display
 
@@ -92,26 +95,50 @@ class Autoencoder():
             winescan_inputs = []
             winescan_encoded = []
             
+            def enc_block(x, nch=32, fs=7):
+                x = Conv1D( nch, fs, padding='same' )( x )
+                x = LeakyReLU()( x )
+                x = MaxPool1D()( x )
+                return x
+            
+            def dec_block( x, nch=32, fs=7, cropped_size=None ):
+                x = Conv1D( nch, fs, padding='same' )( x )
+                x = LeakyReLU()( x )
+                if cropped_size is not None:
+                    x = tf.keras.layers.Cropping1D(cropped_size)(x)
+                x = UpSampling1D()( x )
+                return x
+
             for df in self.data:
                 self.file_ids = df["id"].to_list()  # Assuming each df has an 'id' column
+
+            for i in df.columns:
+                if 'photometry' in i:
+                    size_photometry = np.array(df[i][0]).shape[0]
+                if 'wines' in i:
+                    size_wines = np.array(df[i][0]).shape[0]
+            
+            final_size = max(size_photometry, size_wines)
+            
             for col in df.columns:
                 if "id" in col.lower() or "wavelength" in col.lower():
                     continue
                 self.column_names.append(col)
                 input_size = len(df[col].iloc[0])
-                input_layer = tf.keras.Input(shape=(input_size,), name=col)
-                
-                # Create encoded representation
-                encoded = tf.keras.layers.Dense(512, activation='relu')(input_layer)
-                encoded = tf.keras.layers.Dense(512, activation='relu')(encoded)
-                encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
-                encoded = tf.keras.layers.Dense(256, activation='relu')(encoded)
-                
-                # Append to respective list based on column name
+                input_layer = tf.keras.Input(shape=(input_size,1), name=col)
                 if "photometry" in col.lower():
+                    padding_layer = tf.keras.layers.ZeroPadding1D(padding= (0, final_size-size_photometry))(input_layer)
+                    x1 = enc_block( padding_layer ) # (/2) 512, 10
+                    x2 = enc_block( x1 ) # (/4) 256, 10
+                    x3 = enc_block( x2 ) # (/8) 128, 10
+                    encoded = enc_block( x3 ) # (/16) 64, 10
                     photometry_inputs.append(input_layer)
                     photometry_encoded.append(encoded)
                 elif "winescan" in col.lower():
+                    x1 = enc_block( input_layer ) # (/2) 512, 10
+                    x2 = enc_block( x1 ) # (/4) 256, 10
+                    x3 = enc_block( x2 ) # (/8) 128, 10
+                    encoded = enc_block( x3 ) # (/16) 64, 10
                     winescan_inputs.append(input_layer)
                     winescan_encoded.append(encoded)
             
@@ -119,41 +146,55 @@ class Autoencoder():
                 if photometry_encoded:
                     photometry_merged = tf.keras.layers.concatenate(photometry_encoded)
                     # Additional dense layers for Photometry branch
-                    photometry_merged = tf.keras.layers.Dense(256, activation='relu')(photometry_merged)
-                    photometry_merged = tf.keras.layers.Dense(128, activation='relu')(photometry_merged)
+                    photometry_merged = enc_block(photometry_merged)
+                    photometry_merged = enc_block(photometry_merged)
                 else:
                     photometry_merged = None
 
                 if winescan_encoded:
                     winescan_merged = tf.keras.layers.concatenate(winescan_encoded)
                     # Additional dense layers for Winescan branch
-                    winescan_merged = tf.keras.layers.Dense(256, activation='relu')(winescan_merged)
-                    winescan_merged = tf.keras.layers.Dense(128, activation='relu')(winescan_merged)
+                    winescan_merged = enc_block(winescan_merged)
+                    winescan_merged = enc_block(winescan_merged)
                 else:
                     winescan_merged = None
-
             
             merged = tf.keras.layers.concatenate([photometry_merged, winescan_merged])
             
             # Continue with shared layers
-            merged = tf.keras.layers.Dense(512, activation='relu')(merged)
-            merged = tf.keras.layers.Dense(256, activation='relu')(merged)
-            merged = tf.keras.layers.Dense(128, activation='relu')(merged)
+            x5 = GlobalMaxPool1D()( merged )
+            xc = Dense( latent_size )( x5 )
+            xc = LeakyReLU()( xc )
             
-            latent_space = tf.keras.layers.Dense(latent_size, activation='relu', name="Latent_Space")(merged)
-            
+            xcu = Dense( int(input_size/16) )( xc )
+            xcu = LeakyReLU()( xcu )
+            xcu = Lambda( lambda x: K.expand_dims( x, -1 ) )( xcu )
+                
             # Decoder
             decoded_outputs = []
-            for input_layer in photometry_inputs + winescan_inputs:
-                decoded = tf.keras.layers.Dense(128, activation='relu')(latent_space)
-                decoded = tf.keras.layers.Dense(256, activation='relu')(decoded)
-                decoded = tf.keras.layers.Dense(512, activation='relu')(decoded)
-                decoded = tf.keras.layers.Dense(input_layer.shape[-1], activation='linear')(decoded)
-                decoded_outputs.append(decoded)
+            
+            # Decoder
+            for input_layer in photometry_inputs:
+                x6 = dec_block(xcu, final_size-size_photometry) # 64, 10
+                x7 = dec_block(x6) # 128, 10
+                x8 = dec_block(x7) # 256, 10
+                x9 = dec_block(x8) # 512, 10
+                xout = GlobalMaxPool1D()( x9 )
+                xout = Dense(input_layer.shape[1], activation="linear")(xout)
+                decoded_outputs.append(xout)
+
+            for input_layer in winescan_inputs:
+                x6 = dec_block(xcu)
+                x7 = dec_block(x6) 
+                x8 = dec_block(x7) 
+                x9 = dec_block(x8) 
+                xout = GlobalMaxPool1D()( x9 )
+                xout = Dense(input_layer.shape[1],activation="linear")(xout)
+                decoded_outputs.append(xout)
             
             self.autoencoder = tf.keras.Model(inputs=photometry_inputs + winescan_inputs, outputs=decoded_outputs)
             self.autoencoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3, clipnorm=1e-4), loss='mse')
-            self.encoder = tf.keras.Model(inputs=photometry_inputs + winescan_inputs, outputs=latent_space)            
+            self.encoder = tf.keras.Model(inputs=photometry_inputs + winescan_inputs, outputs=xc)            
             if show_models:
                 display(tf.keras.utils.plot_model(self.autoencoder, show_shapes=True))
         else:
@@ -271,30 +312,6 @@ class Autoencoder():
     def load_model(self, model_weights):
         self.loaded=True
         self.autoencoder=tf.keras.models.load_model(model_weights)
-        
-
-class ClassificationModel:
-    def __init__(self, encoder, latent_size=32, num_classes=4):
-        self.encoder = encoder
-        self.latent_size = latent_size
-        self.num_classes = num_classes
-        self.model = self._build_model()
-    
-    def _build_model(self):
-        self.encoder.trainable = False
-        
-        encoded_input = Input(shape=(self.latent_size,1))
-
-        x = Conv1D(64, 3, activation='relu', padding='same')(encoded_input)
-        x = Conv1D(64, 3, activation='relu', padding='same')(x)
-        x = GlobalAveragePooling1D()(x)
-        x = Dropout(0.5)(x)
-
-        output = Dense(self.num_classes, activation='softmax')(x)
-
-        model = Model(inputs=encoded_input, outputs=output)
-        
-        return model
 
 class ClassificationModel:
     
@@ -356,7 +373,7 @@ class ClassificationModel:
         return train_test_split(encoded_input, labels, test_size=0.2, random_state=42)    
         
 
-    def train(self, df, batch_size=64, epochs=100, patience=10):
+    def train(self, df, batch_size=64, epochs=500, patience=20):
         
         X_train, X_val, y_train, y_val = self._preprocess_data(df)
         
@@ -381,6 +398,9 @@ class ClassificationModel:
         if save:
             plt.savefig('classifier.png', transparent=True)
         plt.show()
+        
+        
+
 
     def save_model(self, weights_directory = "Classifier Weights", file_name = 'classifier.h5'):
         if not os.path.exists(weights_directory):

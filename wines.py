@@ -1,19 +1,13 @@
 import os
-import json
-import time
-import shutil
-import datetime
 import numpy as np
 import pandas as pd
+
 from glob import glob
-import tensorflow as tf
 from tqdm.auto import tqdm
-import multiprocessing
-from itertools import product
-import differint.differint as dif
 from prettytable import PrettyTable
 from IPython.display import clear_output
 from pandas.errors import ParserError
+
 from .models import Autoencoder, ClassificationModel
 
 def convert_to_float(value):
@@ -189,32 +183,32 @@ def read_input_files(folder="Input", verbose=0):
         return data
     
 #TODO: train_models and infer function needs to be fixed according to the input that we are taking.
-def train_models(data_folder):
+# def train_models(data_folder):
 
-    data = read_input_files(data_folder)
+#     data = read_input_files(data_folder)
     
-    try:
-        autoencoder = Autoencoder(latent_size=32, show_models=True) 
-    except:
-        autoencoder = Autoencoder(latent_size=32, show_models=False) 
-    autoencoder.train(data) 
+#     try:
+#         autoencoder = Autoencoder(latent_size=32, show_models=True) 
+#     except:
+#         autoencoder = Autoencoder(latent_size=32, show_models=False) 
+#     autoencoder.train(data) 
 
-    encoder = autoencoder.get_encoder(trained=True)
-    X_encoded = encoder.predict(data)  
+#     encoder = autoencoder.get_encoder(trained=True)
+#     X_encoded = encoder.predict(data)  
     
 
-    classification_model = ClassificationModel(encoder, latent_size=32, num_classes=4)
-    classification_model.train(X_encoded, y)
+#     classification_model = ClassificationModel(encoder, latent_size=32, num_classes=4)
+#     classification_model.train(X_encoded, y)
 
-    autoencoder.save_model('autoencoder_model.h5')
-    classification_model.save_weights('classification_model_weights.h5')
+#     autoencoder.save_model('autoencoder_model.h5')
+#     classification_model.save_weights('classification_model_weights.h5')
 
-def infer(input_data):
-    autoencoder = Autoencoder.load_model('autoencoder_model.h5')
-    classification_model = ClassificationModel.load_weights('classification_model_weights.h5', encoder=autoencoder.get_encoder())
+# def infer(input_data):
+#     autoencoder = Autoencoder.load_model('autoencoder_model.h5')
+#     classification_model = ClassificationModel.load_weights('classification_model_weights.h5', encoder=autoencoder.get_encoder())
     
-    encoded_input = autoencoder.get_encoder().predict(input_data)
+#     encoded_input = autoencoder.get_encoder().predict(input_data)
     
-    prediction = classification_model.predict(encoded_input)
+#     prediction = classification_model.predict(encoded_input)
 
-    return prediction
+#     return prediction
