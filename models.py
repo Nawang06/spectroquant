@@ -101,11 +101,9 @@ class Autoencoder():
                 x = MaxPool1D()( x )
                 return x
             
-            def dec_block( x, nch=32, fs=7, cropped_size=None ):
+            def dec_block( x, nch=32, fs=7):
                 x = Conv1D( nch, fs, padding='same' )( x )
                 x = LeakyReLU()( x )
-                if cropped_size is not None:
-                    x = tf.keras.layers.Cropping1D(cropped_size)(x)
                 x = UpSampling1D()( x )
                 return x
 
@@ -175,7 +173,7 @@ class Autoencoder():
             
             # Decoder
             for input_layer in photometry_inputs:
-                x6 = dec_block(xcu, final_size-size_photometry) # 64, 10
+                x6 = dec_block(xcu) # 64, 10
                 x7 = dec_block(x6) # 128, 10
                 x8 = dec_block(x7) # 256, 10
                 x9 = dec_block(x8) # 512, 10

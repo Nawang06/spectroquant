@@ -95,7 +95,7 @@ def input_files(data_folder, save_folder="Input"):
                     pass
                 else:
                     try:
-                        v.append(list(map(float, df[141:][k].values)))
+                        v.append(pd.Series(list(map(float, df[141:][k].values))).interpolate().values)
                     except Exception as e:
                         print(f'Id: {id}')
                         print(e)
