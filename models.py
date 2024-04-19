@@ -166,7 +166,7 @@ class Autoencoder():
             
             xcu = Dense( int(input_size/16) )( xc )
             xcu = LeakyReLU()( xcu )
-            xcu = Lambda( lambda x: K.expand_dims( x, -1 ) )( xcu )
+            xcu = Lambda( lambda x: tf.expand_dims( x, -1 ) )( xcu )
                 
             # Decoder
             decoded_outputs = []
