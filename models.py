@@ -228,7 +228,7 @@ class Autoencoder():
             for df in self.data:
 
                 for col in df.columns:
-                    if "wavelength" in col.lower() or "id" in col.lower():
+                    if "wavelength" in col.lower() or "id" in col.lower() or "class" in col.lower():
                         continue
                     else:
                         X = np.array(list(df[col]))
