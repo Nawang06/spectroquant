@@ -182,6 +182,28 @@ def read_input_files(folder="Input", verbose=0):
             data = pd.concat(list(dfs.values()))
         return data
     
+def merge_input_result(results_file, input_file, folder="Input"):
+    
+    """
+    Merges the results from a results file with the corresponding input data from a separate file.
+
+    Parameters:
+    results_file (str): The filename of the results file containing the ID and class information.
+    input_file (str): The filename of the input data file containing wavelenghts and values corresponding to the IDs.
+    folder (str, optional): The folder directory where the input and results files are located. Default is "Input".
+
+    Returns:
+    merged_df (DataFrame): A pandas DataFrame containing the merged data, with the results and input data combined.
+    """
+    
+    merged_df = pd.read_pickle(os.path.join(folder,input_file))
+    results_df = pd.read_csv(os.path.join(folder,results_file))
+    merged_df = pd.merge(results_df, merged_df, right_on='id', left_on='ID', how='inner').drop(["ID"], axis=1)
+    # classes = merged_df["class"]
+    # merged_df.drop(["class"],axis=1,inplace=True)
+    return merged_df
+        
+    
 #TODO: train_models and infer function needs to be fixed according to the input that we are taking.
 # def train_models(data_folder):
 

@@ -2,13 +2,14 @@ import os
 import numpy as np
 import tensorflow as tf
 import keras.backend as K
+import seaborn as sns
 
 from tensorflow.keras.layers import Input, Dense, Conv1D, Flatten, Dropout, LeakyReLU,MaxPool1D,UpSampling1D, Lambda, GlobalMaxPool1D,Concatenate, concatenate, ZeroPadding1D, Cropping1D
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import EarlyStopping
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelBinarizer
+from sklearn.preprocessing import OneHotEncoder
 from sklearn.metrics import classification_report, confusion_matrix
 
 
@@ -119,24 +120,24 @@ class Autoencoder():
             final_size = max(size_photometry, size_wines)
             
             for col in df.columns:
-                if "id" in col.lower() or "wavelength" in col.lower():
+                if "id" in col.lower() or "wavelength" in col.lower() or "class" in col.lower():
                     continue
                 self.column_names.append(col)
                 input_size = len(df[col].iloc[0])
                 input_layer = tf.keras.Input(shape=(input_size,1), name=col)
                 if "photometry" in col.lower():
                     padding_layer = tf.keras.layers.ZeroPadding1D(padding= (0, final_size-size_photometry))(input_layer)
-                    x1 = enc_block( padding_layer ) # (/2) 512, 10
-                    x2 = enc_block( x1 ) # (/4) 256, 10
-                    x3 = enc_block( x2 ) # (/8) 128, 10
-                    encoded = enc_block( x3 ) # (/16) 64, 10
+                    x1 = enc_block( padding_layer ) 
+                    x2 = enc_block( x1 ) 
+                    x3 = enc_block( x2 ) 
+                    encoded = enc_block( x3 ) 
                     photometry_inputs.append(input_layer)
                     photometry_encoded.append(encoded)
                 elif "winescan" in col.lower():
-                    x1 = enc_block( input_layer ) # (/2) 512, 10
-                    x2 = enc_block( x1 ) # (/4) 256, 10
-                    x3 = enc_block( x2 ) # (/8) 128, 10
-                    encoded = enc_block( x3 ) # (/16) 64, 10
+                    x1 = enc_block( input_layer ) 
+                    x2 = enc_block( x1 ) 
+                    x3 = enc_block( x2 ) 
+                    encoded = enc_block( x3 ) 
                     winescan_inputs.append(input_layer)
                     winescan_encoded.append(encoded)
             
@@ -297,8 +298,7 @@ class Autoencoder():
             plt.tight_layout(pad=3.0)
             
             if save:
-                plt.savefig('autoencoder_prediction.png', transparent=True)
-            
+                plt.savefig('autoencoder_prediction.png', transparent=True)          
             plt.show()
 
     def save_model(self, weights_directory = "Autoencoder Weights", file_name = 'xyz.h5'):
@@ -307,9 +307,11 @@ class Autoencoder():
         file=os.path.join(weights_directory, file_name)
         self.autoencoder.save(file)
     
-    def load_model(self, model_weights):
+    def load_model(self, model_weights, weights_directory = "Autoencoder Weights"):
         self.loaded=True
-        self.autoencoder=tf.keras.models.load_model(model_weights)
+        self.autoencoder.load_weights(os.path.join(weights_directory, model_weights))
+        # self.autoencoder=tf.keras.models.load_model(model_weights)
+        
 
 class ClassificationModel:
     
@@ -352,12 +354,12 @@ class ClassificationModel:
     def _preprocess_data(self, df, trainset=False):
         
         processed_data = []
-        labels = df["class"]
+        labels = df[["class"]]
         data = df.drop("class", axis=1)
         if trainset:
-            labels = self.lb.fit_transform(labels) 
+            labels = self.ohe.fit_transform(labels) 
         else:
-            labels = self.lb.transform(labels) 
+            labels = self.ohe.transform(labels) 
                 
         for column in data.columns:
             if "wavelength" in column.lower() or "id" in column.lower():
@@ -371,13 +373,18 @@ class ClassificationModel:
         return encoded_input, labels
         
 
-    def train(self, df,test_df=None, batch_size=64, epochs=500, patience=20,test_ratio=0.2, valid_ratio=0.2):
-        
-        self.lb = LabelBinarizer()
+    def train(self, df, test_df=None, categories = None, batch_size=64, epochs=500, patience=50,test_ratio=0.2, valid_ratio=0.2):
+        if categories is None:
+            self.ohe = OneHotEncoder(sparse_output=False)
+        else:
+            self.ohe = OneHotEncoder(sparse_output=False, categories=categories)
+            
+        self.categories = categories
         if test_df is not None:
             ids_train, ids_valid = train_test_split(df['id'].unique(), test_size = valid_ratio)
             self.df_train = df[df['id'].isin(ids_train)]
-            self.df_valid = df[df['id'].isin(ids_valid)]            
+            self.df_valid = df[df['id'].isin(ids_valid)]        
+            self.df_test = test_df
             self.train_input, self.train_labels = self._preprocess_data(self.df_train, trainset=True)
             self.test_input, self.test_labels = self._preprocess_data(test_df)
             self.val_input, self.val_labels = self._preprocess_data(self.df_valid)
@@ -392,7 +399,12 @@ class ClassificationModel:
             self.train_input, self.train_labels = self._preprocess_data(self.df_train, trainset=True)
             self.test_input, self.test_labels = self._preprocess_data(self.df_test)
             self.val_input, self.val_labels = self._preprocess_data(self.df_valid)
-            
+        print("Value count in train set")
+        print(self.df_train["class"].value_counts())
+        print("\nValue count in valid set")
+        print(self.df_valid["class"].value_counts())
+        print("\nValue count in test set")
+        print(self.df_test["class"].value_counts())
         
         optim = tf.keras.optimizers.Adam(learning_rate=1e-4)
         self.classifier.compile(optimizer=optim, loss='categorical_crossentropy',metrics=["accuracy"])
@@ -400,8 +412,44 @@ class ClassificationModel:
         early_stopping = EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
 
         self.classifier.history = self.classifier.fit(self.train_input, self.train_labels, validation_data=(self.val_input, self.val_labels), 
-                                 epochs=epochs, batch_size=batch_size, callbacks=[early_stopping]).history
+                                 epochs=epochs, batch_size=batch_size, callbacks=[early_stopping]).history        
+    
+    def evaluate(self, visual_cm=True):
+        actual = self.test_labels
+        actual_labels = np.argmax(actual,axis=1)
+
+        #Predict on any data
+        predictions = self.classifier.predict(self.test_input)
+        predicted_labels = np.argmax(predictions, axis=1)
         
+        cr = classification_report(actual_labels, predicted_labels)
+        cm = np.round(confusion_matrix(actual_labels, predicted_labels, normalize='true'), 2)
+        print(cr)
+        print(cm)
+        
+        actual= set(self.ohe.inverse_transform(self.test_labels).reshape(self.test_labels.shape[0]))
+        predictions = set(self.ohe.inverse_transform(predictions).reshape(predictions.shape[0]))
+        
+        combined =actual.union(predictions)
+        
+        combined_cat = [c for c in self.categories[0] if c in combined]
+        
+        if visual_cm:
+            # Set up the matplotlib figure
+            plt.figure(figsize=(8, 6))
+
+            # Draw the heatmap with the mask and correct aspect ratio
+            sns.heatmap(cm, annot=True, cmap='Blues', square=True, linewidths=.5)
+            plt.ylabel('Actual label')
+            plt.xlabel('Predicted label')
+
+            # Add title and labels with class names if applicable
+            plt.title('Confusion Matrix')
+            plt.xticks(np.arange(len(combined_cat)), combined_cat)
+            plt.yticks(np.arange(len(combined_cat)), combined_cat, rotation=0)
+
+            # Show the plot
+            plt.show()
     
     def plot_loss(self, grid=True, save=False):
         plt.plot(self.classifier.history['loss'], label='Train Loss')
@@ -421,8 +469,7 @@ class ClassificationModel:
         if not os.path.exists(weights_directory):
             os.makedirs(weights_directory)
         file=os.path.join(weights_directory, file_name)
-        self.autoencoder.save(file)
+        self.classifier.save(file)
     
-    def load_model(self, model_weights):
-        self.loaded=True
-        self.autoencoder=tf.keras.models.load_model(model_weights)
+    def load_model(self, model_weights, weights_directory = "Classifier Weights"):
+        self.classifier.load_weights(os.path.join(weights_directory, model_weights))
